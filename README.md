@@ -42,9 +42,25 @@ cp commands/fix-thinking-error.md ~/.claude/commands/
 
 ## Usage
 
-> **Recommended**: Run the script directly in an external terminal (not inside Claude Code) to avoid generating new thinking blocks during the fix process.
+### When Error Occurs (In-Session Fix)
 
-### Method 1: Direct Python Script (Recommended)
+When you encounter the 400 error, use this workflow to fix it without leaving Claude Code:
+
+```bash
+# Step 1: Clear current corrupted session
+/clear
+
+# Step 2: Fix the session file
+/fix-thinking-error
+
+# Step 3: Resume the fixed session
+/resume
+# Then select the session you want to restore
+```
+
+> **Note**: `/clear` clears the current conversation context, allowing `/fix-thinking-error` to run without triggering the 400 error.
+
+### Method 1: Direct Python Script
 
 ```bash
 # Fix latest session (default)
@@ -130,17 +146,15 @@ python3 ~/.claude/fix_claude_thinking_error.py --restore --delete
 
 ## After Fixing
 
-Use `/resume` to reload the fixed session (**no restart required**):
+**IMPORTANT**: You MUST reload the session after fixing. The fix only modifies the file on disk, not the current session in memory.
 
 ```bash
-# In Claude Code, reload the fixed session
-/resume <session-name>
-
-# Or from command line
-claude --resume <session-name>
+# In Claude Code, reload the session
+/resume
+# Then select the current session to reload it
 ```
 
-> **Note**: `/resume` re-reads the session file from disk, so you don't need to restart Claude Code. Just switch to another session and back, or use `/resume` to reload.
+> ⚠️ **DO NOT continue using the current session after fixing.** The error will persist until you `/resume` to reload the fixed session data.
 
 ## How It Works
 

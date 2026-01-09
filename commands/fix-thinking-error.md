@@ -55,13 +55,17 @@ python3 ~/.claude/fix_claude_thinking_error.py $ARGUMENTS
 
 ## Post-fix Actions
 
-After fixing, use `/resume` to reload the session (**no restart required**):
+**IMPORTANT**: After fixing, you MUST reload the session. The fix only modifies the file on disk, not the current session in memory.
 
-```bash
-/resume <session-name>
+Execute this command to reload:
+
+```
+/resume
 ```
 
-> Note: `/resume` re-reads the session file from disk. If the error persists, run the fix script again from an external terminal.
+Then select the current session to reload it with the fixed data.
+
+> ⚠️ DO NOT continue using the current session after fixing. The error will persist until you `/resume`.
 
 ---
 

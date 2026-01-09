@@ -42,9 +42,25 @@ cp commands/fix-thinking-error.md ~/.claude/commands/
 
 ## 使用方法
 
-> **推荐**：在外部终端直接运行脚本（而非在 Claude Code 内部），以避免修复过程中产生新的 thinking blocks。
+### 错误发生时（会话内修复）
 
-### 方法一：直接运行 Python 脚本（推荐）
+当遇到 400 错误时，使用以下工作流在 Claude Code 内完成修复：
+
+```bash
+# 步骤 1：清除当前损坏的会话
+/clear
+
+# 步骤 2：修复会话文件
+/fix-thinking-error
+
+# 步骤 3：恢复修复后的会话
+/resume
+# 然后选择你要恢复的会话
+```
+
+> **说明**：`/clear` 会清除当前对话上下文，使 `/fix-thinking-error` 能够正常运行而不触发 400 错误。
+
+### 方法一：直接运行 Python 脚本
 
 ```bash
 # 修复最新会话（默认）
@@ -130,17 +146,15 @@ python3 ~/.claude/fix_claude_thinking_error.py --restore --delete
 
 ## 修复后操作
 
-使用 `/resume` 重新加载修复后的会话（**无需重启**）：
+**重要**：修复后必须重新加载会话。修复脚本只修改磁盘上的文件，不会更新当前会话的内存状态。
 
 ```bash
-# 在 Claude Code 中重新加载修复后的会话
-/resume <session-name>
-
-# 或从命令行
-claude --resume <session-name>
+# 在 Claude Code 中重新加载会话
+/resume
+# 然后选择当前会话以重新加载
 ```
 
-> **说明**：`/resume` 会从磁盘重新读取会话文件，因此无需重启 Claude Code。只需切换到其他会话再切回，或使用 `/resume` 重新加载即可。
+> ⚠️ **修复后请勿继续使用当前会话。** 错误会持续出现，直到你执行 `/resume` 重新加载修复后的会话数据。
 
 ## 工作原理
 
