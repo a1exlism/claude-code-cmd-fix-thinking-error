@@ -32,14 +32,23 @@ def get_claude_projects_dir():
 
 
 def path_to_project_dir(cwd):
+    """Convert a path to Claude Code's project directory name format.
+
+    Claude Code encodes paths by replacing both '/' and '_' with '-'.
+    Example: /home/user/my_project -> -home-user-my-project
+    """
     cwd = Path(cwd).resolve()
-    encoded = str(cwd).replace("/", "-")
+    # Claude Code replaces both '/' and '_' with '-'
+    encoded = str(cwd).replace("/", "-").replace("_", "-")
     if encoded.startswith("-"):
         encoded = encoded[1:]
     return "-" + encoded if not encoded.startswith("-") else encoded
 
 
-def find_session_files(projects_dir, cwd=None):
+MIN_SESSION_SIZE = 20 * 1024  # 20KB - skip small session files (e.g., newly created after /clear)
+
+
+def find_session_files(projects_dir, cwd=None, min_size=MIN_SESSION_SIZE, include_subagents=False):
     session_files = []
 
     if not projects_dir.exists():
@@ -56,7 +65,12 @@ def find_session_files(projects_dir, cwd=None):
 
     for jsonl_file in search_pattern.rglob("*.jsonl"):
         try:
+            # Skip subagent files unless explicitly included
+            if not include_subagents and "/subagents/" in str(jsonl_file):
+                continue
             stat = jsonl_file.stat()
+            if min_size > 0 and stat.st_size < min_size:
+                continue
             session_files.append({
                 "path": jsonl_file,
                 "size": stat.st_size,
@@ -257,9 +271,11 @@ def list_sessions(session_files):
 
     for i, f in enumerate(session_files, 1):
         size_str = f"{f['size'] / 1024:.1f} KB" if f['size'] < 1024*1024 else f"{f['size'] / 1024/1024:.1f} MB"
+        # Mark small files that would be skipped
+        skip_mark = " (skipped)" if f['size'] < MIN_SESSION_SIZE else ""
         # Simplify path display
         rel_path = str(f['path']).replace(str(get_claude_projects_dir()), "~/.claude/projects")
-        print(f"{i:<4} {size_str:>10} {f['mtime_str']:<20} {rel_path}")
+        print(f"{i:<4} {size_str:>10} {f['mtime_str']:<20} {rel_path}{skip_mark}")
 
 
 def main():
@@ -332,7 +348,9 @@ Examples:
     session_files = find_session_files(projects_dir, cwd)
 
     if args.list:
-        list_sessions(session_files)
+        # Show all files including small ones for --list
+        all_session_files = find_session_files(projects_dir, cwd, min_size=0)
+        list_sessions(all_session_files)
         return
 
     # Fix specific file
@@ -350,7 +368,17 @@ Examples:
 
     # Fix all files
     if args.all:
-        print(f"Fixing {len(session_files)} session file(s)...\n")
+        print(f"⚠️  About to fix {len(session_files)} session file(s).")
+        print("   This will modify all session files and create backups.")
+        try:
+            confirm = input("\nProceed? [y/N]: ").strip().lower()
+            if confirm != 'y':
+                print("Aborted.")
+                return
+        except (EOFError, KeyboardInterrupt):
+            print("\nAborted.")
+            return
+        print()
         success = 0
         for f in session_files:
             if fix_session_file(f["path"], create_backup=not args.no_backup):
@@ -361,7 +389,13 @@ Examples:
 
     # Default: fix latest file
     if not session_files:
-        print("❌ No session files found")
+        # Check if there are small files that were skipped
+        all_files = find_session_files(projects_dir, cwd, min_size=0)
+        if all_files:
+            print(f"❌ No session files found (skipped {len(all_files)} file(s) < 20KB)")
+            print("   Use --list to see all files, or --file to fix a specific file")
+        else:
+            print("❌ No session files found")
         sys.exit(1)
 
     latest = session_files[0]

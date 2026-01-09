@@ -1,7 +1,7 @@
 ---
 description: Fix API Error 400 - Invalid signature in thinking block
 allowed-tools: Bash(python3:*, ls:*, cp:*, pwd:*)
-argument-hint: [--list] [--all] [--index <n>] [--no-backup] [--list-backups] [--restore] [--delete] [--global]
+argument-hint: [--list] [--index <n>] [--list-backups] [--restore] [--delete] [--global]
 ---
 
 # Fix Claude Code Thinking Block Error
@@ -45,13 +45,13 @@ python3 ~/.claude/fix_claude_thinking_error.py $ARGUMENTS
 | `--list` / `-l` | List all session files |
 | `--file <path>` / `-f` | Fix specific file |
 | `--index <n>` / `-i` | Fix/restore file by index |
-| `--all` / `-a` | Fix all session files |
-| `--no-backup` | Skip backup creation |
 | `--list-backups` / `-lb` | List all backup files |
 | `--restore` / `-r` | Restore session from backup |
 | `--delete` / `-d` | Delete backup after restore |
 | `--cwd <path>` / `-c` | Filter sessions by project directory |
 | `--global` | Fix all projects (not just current) |
+
+> **Note**: `--all` and `--no-backup` are available but require manual confirmation. Not recommended for automated use.
 
 ## Post-fix Actions
 
