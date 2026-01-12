@@ -45,6 +45,10 @@ def path_to_project_dir(cwd):
     return "-" + encoded if not encoded.startswith("-") else encoded
 
 
+def format_session_path(path):
+    return str(path).replace(str(get_claude_projects_dir()), "~/.claude/projects")
+
+
 MIN_SESSION_SIZE = 20 * 1024  # 20KB - skip small session files (e.g., newly created after /clear)
 
 
@@ -118,6 +122,73 @@ def remove_thinking_blocks(obj):
 
     else:
         return obj, 0
+
+
+def contains_thinking_block(obj):
+    """Recursively check if an object contains thinking blocks."""
+    if isinstance(obj, dict):
+        if obj.get("type") in ("thinking", "redacted_thinking"):
+            return True
+        for value in obj.values():
+            if contains_thinking_block(value):
+                return True
+        return False
+
+    if isinstance(obj, list):
+        for item in obj:
+            if contains_thinking_block(item):
+                return True
+        return False
+
+    return False
+
+
+def session_file_has_thinking_blocks(filepath):
+    """Return True if the session file contains thinking blocks."""
+    filepath = Path(filepath)
+    with open(filepath, 'r', encoding='utf-8') as f_in:
+        for line in f_in:
+            line_stripped = line.rstrip()
+            if not line_stripped or line_stripped.isspace():
+                continue
+            try:
+                data = json.loads(line_stripped)
+            except json.JSONDecodeError:
+                continue
+            if contains_thinking_block(data):
+                return True
+    return False
+
+
+def check_session_files(file_paths):
+    """Check session files for thinking blocks."""
+    if not file_paths:
+        return {"status": "no_files"}
+
+    for path in file_paths:
+        try:
+            if session_file_has_thinking_blocks(path):
+                return {"status": "problem", "path": path}
+        except (OSError, PermissionError) as e:
+            return {"status": "error", "path": path, "error": str(e)}
+
+    return {"status": "clean"}
+
+
+def hook_decision_from_check(check_result):
+    status = check_result.get("status")
+    if status == "problem":
+        path = format_session_path(check_result.get("path"))
+        return "block", f"Detected corrupted thinking blocks in session file: {path}"
+    if status == "error":
+        error = check_result.get("error", "Check failed")
+        path = check_result.get("path")
+        if path:
+            return "block", f"Failed to check session file: {format_session_path(path)} ({error})"
+        return "block", f"Failed to check session files: {error}"
+    if status == "no_files":
+        return "approve", "No session files found to check."
+    return "approve", "No corrupted thinking blocks detected."
 
 
 def fix_session_file(filepath, create_backup=True):
@@ -290,6 +361,9 @@ Examples:
   %(prog)s --file /path/to/session.jsonl  # Fix specific file
   %(prog)s --all        # Fix all session files
   %(prog)s --no-backup  # Fix without creating backup
+  %(prog)s --check --cwd .  # Check for corrupted thinking blocks
+  %(prog)s --hook-mode --cwd "$CLAUDE_PROJECT_DIR"  # Hook JSON output
+  %(prog)s --all --auto-fix  # Fix all without confirmation
 
   %(prog)s --list-backups          # List all backup files
   %(prog)s --restore               # Restore latest backup
@@ -301,8 +375,11 @@ Examples:
     parser.add_argument("--file", "-f", type=str, help="Specify file path to fix")
     parser.add_argument("--all", "-a", action="store_true", help="Fix all session files")
     parser.add_argument("--no-backup", action="store_true", help="Don't create backup files")
+    parser.add_argument("--auto-fix", action="store_true", help="Skip confirmation prompt when using --all")
     parser.add_argument("--index", "-i", type=int, help="Fix/restore file by index (use with --list or --list-backups)")
     parser.add_argument("--cwd", "-c", type=str, help="Filter sessions by project directory (use '.' for current directory)")
+    parser.add_argument("--check", action="store_true", help="Check for corrupted thinking blocks and exit with status")
+    parser.add_argument("--hook-mode", action="store_true", help="Run as hook and output JSON decision")
 
     parser.add_argument("--list-backups", "-lb", action="store_true", help="List all backup files")
     parser.add_argument("--restore", "-r", action="store_true", help="Restore session from backup")
@@ -310,12 +387,58 @@ Examples:
 
     args = parser.parse_args()
 
+    if args.hook_mode:
+        args.check = True
+
     cwd = None
     if args.cwd:
         cwd = Path(args.cwd).resolve() if args.cwd != "." else Path.cwd()
-        print(f"📂 Project filter: {cwd}")
+        if not args.check:
+            print(f"📂 Project filter: {cwd}")
 
     projects_dir = get_claude_projects_dir()
+
+    if args.check:
+        check_result = None
+        try:
+            if args.file:
+                target_path = Path(args.file)
+                if not target_path.exists():
+                    check_result = {"status": "error", "path": target_path, "error": "File not found"}
+                else:
+                    check_result = check_session_files([target_path])
+            else:
+                session_files = find_session_files(projects_dir, cwd)
+                if args.index is not None:
+                    if args.index < 1 or args.index > len(session_files):
+                        check_result = {
+                            "status": "error",
+                            "error": f"Invalid index: {args.index} (valid range: 1-{len(session_files)})"
+                        }
+                    else:
+                        check_result = check_session_files([session_files[args.index - 1]["path"]])
+                elif args.all:
+                    check_result = check_session_files([f["path"] for f in session_files])
+                else:
+                    if not session_files:
+                        check_result = {"status": "no_files"}
+                    else:
+                        check_result = check_session_files([session_files[0]["path"]])
+        except Exception as e:
+            check_result = {"status": "error", "error": str(e)}
+
+        if check_result is None:
+            check_result = {"status": "error", "error": "Check failed"}
+
+        if args.hook_mode:
+            decision, reason = hook_decision_from_check(check_result)
+            print(json.dumps({"decision": decision, "reason": reason}, ensure_ascii=False))
+            return
+
+        if check_result["status"] in ("problem", "error"):
+            sys.exit(1)
+        sys.exit(0)
+
     print(f"📁 Claude projects directory: {projects_dir}\n")
 
     if not projects_dir.exists():
@@ -370,14 +493,15 @@ Examples:
     if args.all:
         print(f"⚠️  About to fix {len(session_files)} session file(s).")
         print("   This will modify all session files and create backups.")
-        try:
-            confirm = input("\nProceed? [y/N]: ").strip().lower()
-            if confirm != 'y':
-                print("Aborted.")
+        if not args.auto_fix:
+            try:
+                confirm = input("\nProceed? [y/N]: ").strip().lower()
+                if confirm != 'y':
+                    print("Aborted.")
+                    return
+            except (EOFError, KeyboardInterrupt):
+                print("\nAborted.")
                 return
-        except (EOFError, KeyboardInterrupt):
-            print("\nAborted.")
-            return
         print()
         success = 0
         for f in session_files:

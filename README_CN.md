@@ -29,6 +29,8 @@ cd claude-code-cmd-fix-thinking-error
 ./install.sh
 ```
 
+安装脚本会可选地配置 Claude Code hooks 以自动检查会话文件。
+
 ### 手动安装
 
 ```bash
@@ -92,6 +94,32 @@ python3 ~/.claude/fix_claude_thinking_error.py --no-backup
 
 > 注意：在 Claude Code 内使用 `/fix-thinking-error` 可能会产生新的 thinking blocks。如果修复后错误仍然存在，请在外部终端重新运行脚本。
 
+### 使用 Hooks 自动修复
+
+Claude Code hooks 是用户定义的 shell 命令，在生命周期的不同点自动执行。你可以配置 hook 在恢复会话时自动检查损坏的 thinking blocks。
+
+在 `~/.claude/settings.json` 中添加以下配置：
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/fix_claude_thinking_error.py --hook-mode --cwd \"$CLAUDE_PROJECT_DIR\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+该 hook 会在 `SessionStart` 事件（特别是恢复会话时）触发，检查会话文件是否有损坏的 thinking blocks。
+
 ## 命令选项
 
 | 选项                     | 说明                       |
@@ -101,7 +129,10 @@ python3 ~/.claude/fix_claude_thinking_error.py --no-backup
 | `--index <n>` / `-i`     | 按索引修复/恢复文件        |
 | `--all` / `-a`           | 修复所有会话文件           |
 | `--no-backup`            | 跳过备份创建（谨慎使用）   |
+| `--auto-fix`             | 使用 --all 时跳过确认      |
 | `--cwd <path>` / `-c`    | 按项目目录筛选会话         |
+| `--check`                | 检查损坏的 thinking blocks |
+| `--hook-mode`            | 作为 hook 运行，输出 JSON  |
 | `--list-backups` / `-lb` | 列出所有备份文件           |
 | `--restore` / `-r`       | 从备份恢复会话             |
 | `--delete` / `-d`        | 恢复后删除备份文件         |

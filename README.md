@@ -29,6 +29,8 @@ cd claude-code-cmd-fix-thinking-error
 ./install.sh
 ```
 
+The install script will optionally configure Claude Code hooks for automatic session checking.
+
 ### Manual Install
 
 ```bash
@@ -92,6 +94,32 @@ python3 ~/.claude/fix_claude_thinking_error.py --no-backup
 
 > Note: Using `/fix-thinking-error` inside Claude Code may generate new thinking blocks. If the error persists after fixing, run the script again from an external terminal.
 
+### Using Hooks for Automatic Fix
+
+Claude Code hooks are user-defined shell commands that run automatically at different points in the lifecycle. You can configure a hook to automatically check for corrupted thinking blocks when resuming a session.
+
+Add the following to `~/.claude/settings.json`:
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 ~/.claude/fix_claude_thinking_error.py --hook-mode --cwd \"$CLAUDE_PROJECT_DIR\""
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+This hook runs on `SessionStart` (specifically when resuming) and checks session files for corrupted thinking blocks.
+
 ## Options
 
 | Option                   | Description                             |
@@ -101,7 +129,10 @@ python3 ~/.claude/fix_claude_thinking_error.py --no-backup
 | `--index <n>` / `-i`     | Fix/restore file by index               |
 | `--all` / `-a`           | Fix all session files                   |
 | `--no-backup`            | Skip backup creation (use with caution) |
+| `--auto-fix`             | Skip confirmation when using --all      |
 | `--cwd <path>` / `-c`    | Filter sessions by project directory    |
+| `--check`                | Check for corrupted thinking blocks     |
+| `--hook-mode`            | Run as hook, output JSON format         |
 | `--list-backups` / `-lb` | List all backup files                   |
 | `--restore` / `-r`       | Restore session from backup             |
 | `--delete` / `-d`        | Delete backup after restore             |
